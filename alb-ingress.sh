@@ -18,48 +18,16 @@ echo "=== Updating kubeconfig for cluster '$CLUSTER_NAME' in region '$AWS_REGION
 aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
 
 ########################################
-# 1. OIDC PROVIDER SETUP (IDEMPOTENT)
+# 1. JUST CREATE OIDC PROVIDER (NO CHECK)
 ########################################
 echo
-echo "=== Checking IAM OIDC provider ==="
+echo "=== Creating IAM OIDC provider via eksctl (if not already present) ==="
 
-# Get raw OIDC issuer URL from EKS
-OIDC_URL_RAW=$(aws eks describe-cluster \
-  --name "$CLUSTER_NAME" \
+# eksctl is idempotent here – if OIDC provider exists, it will just succeed.
+eksctl utils associate-iam-oidc-provider \
+  --cluster "$CLUSTER_NAME" \
   --region "$AWS_REGION" \
-  --query "cluster.identity.oidc.issuer" \
-  --output text)
-
-# Clean CR/LF and quotes
-OIDC_URL=$(echo "$OIDC_URL_RAW" | tr -d '\r\n"')
-
-if [[ -z "$OIDC_URL" || "$OIDC_URL" == "None" || "$OIDC_URL" == "null" ]]; then
-  echo "ERROR: Cluster did not return a valid OIDC URL. Check CLUSTER_NAME / AWS_REGION."
-  exit 1
-fi
-
-echo "OIDC URL   : $OIDC_URL"
-
-# Extract final ID from URL: https://oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>
-OIDC_ID=$(echo "$OIDC_URL" | awk -F/ '{print $NF}')
-
-# Check if provider already exists in IAM
-EXISTING_PROVIDER_ARN=$(
-  aws iam list-open-id-connect-providers \
-    --query "OpenIDConnectProviderList[?contains(Arn, '$OIDC_ID')].Arn" \
-    --output text 2>/dev/null || true
-)
-
-if [[ -n "$EXISTING_PROVIDER_ARN" && "$EXISTING_PROVIDER_ARN" != "None" ]]; then
-  echo "OIDC provider already exists:"
-  echo "  $EXISTING_PROVIDER_ARN"
-else
-  echo "Creating IAM OIDC provider via eksctl..."
-  eksctl utils associate-iam-oidc-provider \
-    --cluster "$CLUSTER_NAME" \
-    --region "$AWS_REGION" \
-    --approve
-fi
+  --approve
 
 ########################################
 # 2. IAM POLICY FOR ALB CONTROLLER
