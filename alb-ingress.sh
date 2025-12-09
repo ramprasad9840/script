@@ -1,59 +1,106 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-########################################
-# EDIT THESE VALUES
-########################################
-CLUSTER_NAME="my-eks-cluster"
-AWS_REGION="us-east-1"
-AWS_ACCOUNT_ID="111122223333"
-########################################
+# install-cwagent-eks.sh
+# Installs CloudWatch Agent (Container Insights) on an EKS cluster (DaemonSet)
+#
+# Usage:
+#   CLUSTER_NAME=my-eks-cluster REGION=ap-south-1 ./install-cwagent-eks.sh
+#
+# Optional: set USE_IRSA=true to create an IAM service account via eksctl (eksctl required)
+#
+# NOTE: This script applies upstream manifests. Review them if you need custom tuning.
 
-LBC_VERSION="v2.14.1"
-HELM_CHART_VERSION="1.14.0"
-POLICY_NAME="AWSLoadBalancerControllerIAMPolicy"
-POLICY_ARN="arn:aws:iam::${AWS_ACCOUNT_ID}:policy/${POLICY_NAME}"
+: "${CLUSTER_NAME:=${CLUSTER_NAME:-}}"
+: "${REGION:=${REGION:-}}"
+NAMESPACE="${NAMESPACE:-amazon-cloudwatch}"
+USE_IRSA="${USE_IRSA:-false}"   # set to "true" to use eksctl to create IRSA service account
+SA_NAME="${SA_NAME:-cloudwatch-agent}"
+TMPDIR="$(mktemp -d)"
+CURL_OPTS="-sSL"
 
-echo "Updating kubeconfig..."
-aws eks update-kubeconfig --name "$CLUSTER_NAME" --region "$AWS_REGION"
+if [ -z "$CLUSTER_NAME" ]; then
+  echo "ERROR: CLUSTER_NAME environment variable must be set."
+  echo "Example: CLUSTER_NAME=my-cluster REGION=ap-south-1 ./install-cwagent-eks.sh"
+  exit 2
+fi
 
-echo "Associating IAM OIDC provider for cluster ${CLUSTER_NAME}..."
-eksctl utils associate-iam-oidc-provider \
-  --cluster="$CLUSTER_NAME" \
-  --region="$AWS_REGION" \
-  --approve
+echo "Installing CloudWatch Agent (Container Insights) to cluster: ${CLUSTER_NAME}"
+echo "Namespace: ${NAMESPACE}"
+echo "IRSA via eksctl: ${USE_IRSA}"
 
-echo "Downloading IAM policy document for AWS Load Balancer Controller..."
-curl -sS -o iam_policy.json \
-  "https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/${LBC_VERSION}/docs/install/iam_policy.json"
+# Prereqs quick check
+command -v kubectl >/dev/null 2>&1 || { echo "kubectl not found in PATH"; exit 1; }
+if [ "${USE_IRSA}" = "true" ]; then
+  command -v eksctl >/dev/null 2>&1 || { echo "eksctl not found in PATH but USE_IRSA=true"; exit 1; }
+fi
 
-echo "Creating IAM policy ${POLICY_NAME} (fails if it already exists)..."
-aws iam create-policy \
-  --policy-name "$POLICY_NAME" \
-  --policy-document file://iam_policy.json
+# Official upstream manifest locations (AWS samples / S3)
+NS_URL="https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/cloudwatch-namespace.yaml"
+SA_URL="https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/cwagent/cwagent-serviceaccount.yaml"
+CONFIGMAP_URL="https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/cwagent/cwagent-configmap-enhanced.yaml"
+DAEMONSET_URL="https://raw.githubusercontent.com/aws-samples/amazon-cloudwatch-container-insights/latest/k8s-deployment-manifest-templates/deployment-mode/daemonset/container-insights-monitoring/cwagent/cwagent-daemonset.yaml"
 
-echo "Creating IAM service account for AWS Load Balancer Controller..."
-eksctl create iamserviceaccount \
-  --cluster="$CLUSTER_NAME" \
-  --namespace=kube-system \
-  --name=aws-load-balancer-controller \
-  --attach-policy-arn="$POLICY_ARN" \
-  --override-existing-serviceaccounts \
-  --region "$AWS_REGION" \
-  --approve
+echo "1) Creating namespace..."
+kubectl apply -f "${NS_URL}"
 
-echo "Installing AWS Load Balancer Controller via Helm..."
-helm repo add eks https://aws.github.io/eks-charts >/dev/null 2>&1 || true
-helm repo update eks >/dev/null 2>&1
+echo "2) Creating RBAC / service account (clusterrole/clusterrolebinding included in manifest)..."
+kubectl apply -f "${SA_URL}"
 
-helm upgrade --install aws-load-balancer-controller eks/aws-load-balancer-controller \
-  -n kube-system \
-  --set clusterName="$CLUSTER_NAME" \
-  --set serviceAccount.create=false \
-  --set serviceAccount.name=aws-load-balancer-controller \
-  --version "$HELM_CHART_VERSION"
+# Optionally create IRSA (eksctl create iamserviceaccount...) - recommended if you want IRSA
+if [ "${USE_IRSA}" = "true" ]; then
+  if [ -z "${REGION}" ]; then
+    echo "REGION required when USE_IRSA=true"
+    exit 2
+  fi
 
-echo "Verification:"
-kubectl get deployment -n kube-system aws-load-balancer-controller
+  echo "3) Associating OIDC provider (if not already associated) and creating IAM service account via eksctl..."
+  echo "   (may ask for approval to create IAM resources)"
+  eksctl utils associate-iam-oidc-provider --cluster "${CLUSTER_NAME}" --region "${REGION}" --approve
 
-echo "AWS Load Balancer Controller installation complete."
+  # create iam service account with AWS managed CloudWatch policy (CloudWatchAgentServerPolicy)
+  eksctl create iamserviceaccount \
+    --cluster "${CLUSTER_NAME}" \
+    --region "${REGION}" \
+    --namespace "${NAMESPACE}" \
+    --name "${SA_NAME}" \
+    --attach-policy-arn "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy" \
+    --override-existing-serviceaccounts \
+    --approve
+  echo "IRSA service account created/updated: ${NAMESPACE}/${SA_NAME}"
+else
+  echo "Skipping IRSA. Ensure node IAM role (instance profile) has permission to publish metrics/logs if not using IRSA."
+fi
+
+echo "4) Downloading CloudWatch agent ConfigMap and setting cluster_name -> ${CLUSTER_NAME}"
+cd "${TMPDIR}"
+curl ${CURL_OPTS} -o cwagent-configmap.yaml "${CONFIGMAP_URL}"
+
+# replace "cluster_name": "" with actual cluster name (handles JSON/YAML style in configmap)
+# safe sed that works on macOS and Linux
+if sed --version >/dev/null 2>&1; then
+  sed -i "s/\"cluster_name\": \"\"/\"cluster_name\": \"${CLUSTER_NAME}\"/g" cwagent-configmap.yaml
+else
+  # macOS sed
+  sed -i '' "s/\"cluster_name\": \"\"/\"cluster_name\": \"${CLUSTER_NAME}\"/g" cwagent-configmap.yaml
+fi
+
+kubectl apply -f cwagent-configmap.yaml
+
+echo "5) Deploying CloudWatch agent DaemonSet..."
+kubectl apply -f "${DAEMONSET_URL}"
+
+echo
+echo "Verifications:"
+echo "  kubectl -n ${NAMESPACE} get daemonset cloudwatch-agent"
+echo "  kubectl -n ${NAMESPACE} get pods -l k8s-app=cloudwatch-agent"
+echo
+echo "You can tail logs of an agent pod to validate shipping:"
+echo "  POD=\$(kubectl -n ${NAMESPACE} get pods -l k8s-app=cloudwatch-agent -o jsonpath='{.items[0].metadata.name}')"
+echo "  kubectl -n ${NAMESPACE} logs -f \$POD -c cloudwatch-agent"
+echo
+
+echo "Cleanup: temporary files removed from ${TMPDIR}"
+rm -rf "${TMPDIR}"
+
+echo "Done. Container Insights CloudWatch Agent deployed. See CloudWatch Console (Container Insights) for metrics/logs."
