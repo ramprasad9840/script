@@ -1,0 +1,6 @@
+<powershell>
+Set-ExecutionPolicy Bypass -Scope Process -Force
+Invoke-WebRequest https://s3.amazonaws.com/amazon-ssm-windows/latest/AmazonSSMAgentSetup.exe -OutFile C:\SSMAgent.exe
+Start-Process -FilePath "C:\SSMAgent.exe" -ArgumentList "/install" -Wait
+Restart-Service AmazonSSMAgent
+</powershell>
