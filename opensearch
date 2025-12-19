@@ -25,3 +25,27 @@ kubectl annotate sa fluent-bit \
   -n fluent-bit \
   eks.amazonaws.com/role-arn=arn:aws:iam::381492007658:role/fluent-bit-opensearch-role \
   --overwrite
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Sid": "AllowFluentBit",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "arn:aws:iam::381492007658:role/fluent-bit-opensearch-role"
+      },
+      "Action": "es:*",
+      "Resource": "arn:aws:es:us-east-1:381492007658:domain/uat-oss/*"
+    },
+    {
+      "Sid": "AllowDashboards",
+      "Effect": "Allow",
+      "Principal": {
+        "AWS": "*"
+      },
+      "Action": "es:ESHttp*",
+      "Resource": "arn:aws:es:us-east-1:381492007658:domain/uat-oss/*"
+    }
+  ]
+}
+
