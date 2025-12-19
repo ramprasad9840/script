@@ -1,0 +1,27 @@
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Principal": {
+        "Federated": "arn:aws:iam::381492007658:oidc-provider/oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>"
+      },
+      "Action": "sts:AssumeRoleWithWebIdentity",
+      "Condition": {
+        "StringEquals": {
+          "oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>:sub":
+            "system:serviceaccount:fluent-bit:fluent-bit",
+          "oidc.eks.us-east-1.amazonaws.com/id/<OIDC_ID>:aud":
+            "sts.amazonaws.com"
+        }
+      }
+    }
+  ]
+}
+
+
+
+kubectl annotate sa fluent-bit \
+  -n fluent-bit \
+  eks.amazonaws.com/role-arn=arn:aws:iam::381492007658:role/fluent-bit-opensearch-role \
+  --overwrite
