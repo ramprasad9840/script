@@ -23,15 +23,10 @@ serviceAccount:
 # Volumes
 # ------------------------------------------------------------
 daemonSetVolumes:
-  # Application logs from node
   - name: applogs
     hostPath:
       path: /logs
       type: Directory
-
-  # Writable state directory for Fluent Bit DB
-  - name: fluentbit-state
-    emptyDir: {}
 
 
 daemonSetVolumeMounts:
@@ -39,12 +34,9 @@ daemonSetVolumeMounts:
     mountPath: /logs
     readOnly: true
 
-  - name: fluentbit-state
-    mountPath: /var/fluent-bit/state
-
 
 # ------------------------------------------------------------
-# ADDITIONAL INPUTS (AWS for Fluent Bit way)
+# ADDITIONAL INPUTS (NO DB)
 # ------------------------------------------------------------
 additionalInputs: |
   [INPUT]
@@ -54,7 +46,6 @@ additionalInputs: |
       Exclude_Path      *.gz
       Refresh_Interval  5
       Rotate_Wait       30
-      DB                /var/fluent-bit/state/applogs.db
       Mem_Buf_Limit     100MB
       Skip_Long_Lines   On
       Read_from_Head    Off
@@ -62,7 +53,7 @@ additionalInputs: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL FILTERS (SUPPORTED ONLY)
+# ADDITIONAL FILTERS
 # ------------------------------------------------------------
 additionalFilters: |
   [FILTER]
@@ -73,7 +64,7 @@ additionalFilters: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL OUTPUTS (OpenSearch)
+# ADDITIONAL OUTPUTS
 # ------------------------------------------------------------
 additionalOutputs: |
   [OUTPUT]
