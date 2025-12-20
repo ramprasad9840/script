@@ -46,28 +46,30 @@ config:
         Flush         5
         Log_Level     info
         Daemon        off
+        storage.path /fluent-bit/state
 
   inputs: |
     [INPUT]
         Name              tail
         Tag               applogs.*
-        Path              /logs/**/*.log
+        Path              /logs/*/*.log
         Exclude_Path      *.gz
         Refresh_Interval  5
         Rotate_Wait       30
-        DB                /var/log/flb_applogs.db
+        DB                /fluent-bit/state/applogs.db
         Mem_Buf_Limit     100MB
         Skip_Long_Lines   On
         Read_from_Head    Off
+        Path_Key          filepath
 
   filters: |
-    # Extract application name from folder path
+    # Extract app name from file path: /logs/<app>/<file>.log
     [FILTER]
         Name    regex
         Match   applogs.*
-        Regex   log ^/logs/(?<app>[^/]+)/.*\.log$
+        Regex   filepath ^/logs/(?<app>[^/]+)/.*\.log$
 
-    # Add common fields
+    # Add common metadata
     [FILTER]
         Name    modify
         Match   applogs.*
@@ -89,19 +91,4 @@ config:
         Suppress_Type_Name    On
 
 
-# ------------------------------------------------------------
-# Resources (recommended defaults)
-# ------------------------------------------------------------
-resources:
-  requests:
-    cpu: 100m
-    memory: 200Mi
-  limits:
-    memory: 300Mi
 
-
-# ------------------------------------------------------------
-# Run on all nodes
-# ------------------------------------------------------------
-tolerations:
-  - operator: Exists
