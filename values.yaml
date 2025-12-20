@@ -1,5 +1,12 @@
 # ------------------------------------------------------------
-# Disable AWS default outputs
+# Disable default container logs
+# ------------------------------------------------------------
+containerLogs:
+  enabled: false
+
+
+# ------------------------------------------------------------
+# Disable AWS outputs
 # ------------------------------------------------------------
 cloudWatchLogs:
   enabled: false
@@ -36,7 +43,7 @@ daemonSetVolumeMounts:
 
 
 # ------------------------------------------------------------
-# ADDITIONAL INPUTS (NO DB)
+# Application log input (NO **)
 # ------------------------------------------------------------
 additionalInputs: |
   [INPUT]
@@ -53,7 +60,7 @@ additionalInputs: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL FILTERS
+# Filters
 # ------------------------------------------------------------
 additionalFilters: |
   [FILTER]
@@ -64,7 +71,7 @@ additionalFilters: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL OUTPUTS
+# Output to OpenSearch
 # ------------------------------------------------------------
 additionalOutputs: |
   [OUTPUT]
