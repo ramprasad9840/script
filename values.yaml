@@ -1,8 +1,9 @@
 # ------------------------------------------------------------
-# Disable default container logs
+# Disable AWS default container logs (THIS IS THE KEY)
 # ------------------------------------------------------------
 containerLogs:
   enabled: false
+  includeNamespaces: []
 
 
 # ------------------------------------------------------------
@@ -19,7 +20,7 @@ kinesis:
 
 
 # ------------------------------------------------------------
-# Service Account (IRSA)
+# Service Account
 # ------------------------------------------------------------
 serviceAccount:
   create: false
@@ -35,7 +36,6 @@ daemonSetVolumes:
       path: /logs
       type: Directory
 
-
 daemonSetVolumeMounts:
   - name: applogs
     mountPath: /logs
@@ -43,7 +43,7 @@ daemonSetVolumeMounts:
 
 
 # ------------------------------------------------------------
-# Application log input (NO **)
+# ONLY application logs input
 # ------------------------------------------------------------
 additionalInputs: |
   [INPUT]
@@ -71,7 +71,7 @@ additionalFilters: |
 
 
 # ------------------------------------------------------------
-# Output to OpenSearch
+# Output
 # ------------------------------------------------------------
 additionalOutputs: |
   [OUTPUT]
@@ -99,8 +99,5 @@ resources:
     memory: 300Mi
 
 
-# ------------------------------------------------------------
-# Run on all nodes
-# ------------------------------------------------------------
 tolerations:
   - operator: Exists
