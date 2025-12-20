@@ -35,7 +35,7 @@ daemonSetVolumeMounts:
 
 
 # ------------------------------------------------------------
-# ADDITIONAL INPUTS (AWS way)
+# ADDITIONAL INPUTS
 # ------------------------------------------------------------
 additionalInputs: |
   [INPUT]
@@ -53,14 +53,9 @@ additionalInputs: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL FILTERS
+# ADDITIONAL FILTERS (NO regex)
 # ------------------------------------------------------------
 additionalFilters: |
-  [FILTER]
-      Name    regex
-      Match   applogs.*
-      Regex   filepath ^/logs/(?<app>[^/]+)/.*\.log$
-
   [FILTER]
       Name    modify
       Match   applogs.*
@@ -84,6 +79,3 @@ additionalOutputs: |
       Logstash_Format       On
       Replace_Dots          On
       Suppress_Type_Name    On
-
-
-
