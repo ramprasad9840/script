@@ -20,22 +20,31 @@ serviceAccount:
 
 
 # ------------------------------------------------------------
-# Mount node application logs
+# Volumes
 # ------------------------------------------------------------
 daemonSetVolumes:
+  # Application logs from node
   - name: applogs
     hostPath:
       path: /logs
       type: Directory
+
+  # Writable state directory for Fluent Bit DB
+  - name: fluentbit-state
+    emptyDir: {}
+
 
 daemonSetVolumeMounts:
   - name: applogs
     mountPath: /logs
     readOnly: true
 
+  - name: fluentbit-state
+    mountPath: /var/fluent-bit/state
+
 
 # ------------------------------------------------------------
-# ADDITIONAL INPUTS
+# ADDITIONAL INPUTS (AWS for Fluent Bit way)
 # ------------------------------------------------------------
 additionalInputs: |
   [INPUT]
@@ -53,7 +62,7 @@ additionalInputs: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL FILTERS (NO regex)
+# ADDITIONAL FILTERS (SUPPORTED ONLY)
 # ------------------------------------------------------------
 additionalFilters: |
   [FILTER]
@@ -64,7 +73,7 @@ additionalFilters: |
 
 
 # ------------------------------------------------------------
-# ADDITIONAL OUTPUTS
+# ADDITIONAL OUTPUTS (OpenSearch)
 # ------------------------------------------------------------
 additionalOutputs: |
   [OUTPUT]
@@ -79,3 +88,21 @@ additionalOutputs: |
       Logstash_Format       On
       Replace_Dots          On
       Suppress_Type_Name    On
+
+
+# ------------------------------------------------------------
+# Resources
+# ------------------------------------------------------------
+resources:
+  requests:
+    cpu: 100m
+    memory: 200Mi
+  limits:
+    memory: 300Mi
+
+
+# ------------------------------------------------------------
+# Run on all nodes
+# ------------------------------------------------------------
+tolerations:
+  - operator: Exists
