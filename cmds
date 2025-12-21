@@ -1,0 +1,5 @@
+helm upgrade amazon-cloudwatch-observability \
+  aws-observability/amazon-cloudwatch-observability \
+  -n amazon-cloudwatch \
+  --set cloudWatch.enabled=false \
+  --set containerLogs.enabled=false
