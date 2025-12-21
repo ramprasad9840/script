@@ -5,17 +5,17 @@ serviceAccount:
   create: false
   name: fluent-bit
 
-daemonSet:
-  volumes:
-    - name: host-application-logs
-      hostPath:
-        path: /logs
-        type: Directory
+# ✅ THESE MUST BE TOP-LEVEL
+extraVolumes:
+  - name: host-application-logs
+    hostPath:
+      path: /logs
+      type: Directory
 
-  volumeMounts:
-    - name: host-application-logs
-      mountPath: /mnt/node-logs
-      readOnly: true
+extraVolumeMounts:
+  - name: host-application-logs
+    mountPath: /mnt/node-logs
+    readOnly: true
 
 input:
   enabled: false
@@ -26,8 +26,6 @@ extraInputs: |
       Path              /mnt/node-logs/*/*.log
       Tag               debtwizard.*
       DB                /var/fluent-bit/state/debtwizard.db
-      Mem_Buf_Limit     50MB
-      Skip_Long_Lines   On
       Refresh_Interval  10
 
 filter:
@@ -52,7 +50,7 @@ extraOutputs: |
       AWS_Region          us-east-1
       AWS_Service_Name    es
       Index               debtwizard-logs
-      Suppress_Type_Name  On
+
 helm install fluent-bit \
   eks/aws-for-fluent-bit \
   -n logging \
