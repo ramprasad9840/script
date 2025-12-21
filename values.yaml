@@ -1,103 +1,58 @@
-# ------------------------------------------------------------
-# Disable AWS default container logs (THIS IS THE KEY)
-# ------------------------------------------------------------
-containerLogs:
-  enabled: false
-  includeNamespaces: []
+clusterName: EKS-Cluster
+region: us-east-1
+
+manager:
+  serviceAccount:
+    annotations:
+      eks.amazonaws.com: arn:aws:iam::381492007658:role/cloudwatch-agent
+
+# Direct Volume Mounts (These are NOT nested under containerInsights)
+fluent-bit:
+    extraVolumes:
+      - name: host-application-logs
+        hostPath:
+          path: /logs
+
+    extraVolumeMounts:
+      - name: host-application-logs
+        mountPath: /mnt/node-logs
+        readOnly: true
+
+    # CloudWatch output is disabled to focus only on OpenSearch
 
 
-# ------------------------------------------------------------
-# Disable AWS outputs
-# ------------------------------------------------------------
-cloudWatchLogs:
-  enabled: false
+    # Custom Fluent Bit Config Blocks
+    extraConfig: |
+      [INPUT]
+          Name            tail
+          Tag             debtwizard.*
+          Path            /mnt/node-logs/*/*.log
+          DB              /var/fluent-bit/state/debtwizard.db
+          Mem_Buf_Limit   50MB
+          Skip_Long_Lines On
+          Path_Key        On
+          Refresh_Interval 10
 
-firehose:
-  enabled: false
+      [FILTER]
+          Name                kubernetes
+          Match               debtwizard.*
+          Kube_URL            https://kubernetes.default.svc:443
+          Merge_Log           On
+          Keep_Log            Off
+          Use_Kubelet         On
+          Kubelet_Port        10250
 
-kinesis:
-  enabled: false
+    extraOutputs: |
+      [OUTPUT]
+          Name            opensearch
+          Match           debtwizard.*
+          Host            vpc-uat-oss-sa4m7otu6ck4fmp4fy2l5wkoce.us-east-1.es.amazonaws.com
+          Port            443
+          TLS             On
+          tls.verify      Off
+          AWS_Auth        On
+          AWS_Region      us-east-1
+          AWS_Service_Name es
+          Index           debtwizard-logs
+          Suppress_Type_Name On
 
-
-# ------------------------------------------------------------
-# Service Account
-# ------------------------------------------------------------
-serviceAccount:
-  create: false
-  name: fluent-bit
-
-
-# ------------------------------------------------------------
-# Volumes
-# ------------------------------------------------------------
-daemonSetVolumes:
-  - name: applogs
-    hostPath:
-      path: /logs
-      type: Directory
-
-daemonSetVolumeMounts:
-  - name: applogs
-    mountPath: /logs
-    readOnly: true
-
-
-# ------------------------------------------------------------
-# ONLY application logs input
-# ------------------------------------------------------------
-additionalInputs: |
-  [INPUT]
-      Name              tail
-      Tag               applogs.*
-      Path              /logs/*/*.log
-      Exclude_Path      *.gz
-      Refresh_Interval  5
-      Rotate_Wait       30
-      Mem_Buf_Limit     100MB
-      Skip_Long_Lines   On
-      Read_from_Head    Off
-      Path_Key          filepath
-
-
-# ------------------------------------------------------------
-# Filters
-# ------------------------------------------------------------
-additionalFilters: |
-  [FILTER]
-      Name    modify
-      Match   applogs.*
-      Add     source eks
-      Add     log_type file
-
-
-# ------------------------------------------------------------
-# Output
-# ------------------------------------------------------------
-additionalOutputs: |
-  [OUTPUT]
-      Name                  opensearch
-      Match                 applogs.*
-      Host                  vpc-uat-oss-s4m7otu6ck4fmp4fy215wkoce.us-east-1.es.amazonaws.com
-      Port                  443
-      TLS                   On
-      AWS_Auth              On
-      AWS_Region            us-east-1
-      Index                 eks-file-logs
-      Logstash_Format       On
-      Replace_Dots          On
-      Suppress_Type_Name    On
-
-
-# ------------------------------------------------------------
-# Resources
-# ------------------------------------------------------------
-resources:
-  requests:
-    cpu: 100m
-    memory: 200Mi
-  limits:
-    memory: 300Mi
-
-
-tolerations:
-  - operator: Exists
