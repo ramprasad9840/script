@@ -1,5 +1,60 @@
-helm upgrade amazon-cloudwatch-observability \
-  aws-observability/amazon-cloudwatch-observability \
-  -n amazon-cloudwatch \
-  --set cloudWatch.enabled=false \
-  --set containerLogs.enabled=false
+helm repo add eks https://aws.github.io/eks-charts
+helm repo update
+
+serviceAccount:
+  create: false
+  name: fluent-bit
+
+daemonSet:
+  volumes:
+    - name: host-application-logs
+      hostPath:
+        path: /logs
+        type: Directory
+
+  volumeMounts:
+    - name: host-application-logs
+      mountPath: /mnt/node-logs
+      readOnly: true
+
+input:
+  enabled: false
+
+extraInputs: |
+  [INPUT]
+      Name              tail
+      Path              /mnt/node-logs/*/*.log
+      Tag               debtwizard.*
+      DB                /var/fluent-bit/state/debtwizard.db
+      Mem_Buf_Limit     50MB
+      Skip_Long_Lines   On
+      Refresh_Interval  10
+
+filter:
+  enabled: false
+
+extraFilters: |
+  [FILTER]
+      Name              kubernetes
+      Match             debtwizard.*
+
+output:
+  enabled: false
+
+extraOutputs: |
+  [OUTPUT]
+      Name                opensearch
+      Match               debtwizard.*
+      Host                vpc-uat-oss-sa4m7otu6ck4fmp4fy2l5wkoce.us-east-1.es.amazonaws.com
+      Port                443
+      TLS                 On
+      AWS_Auth            On
+      AWS_Region          us-east-1
+      AWS_Service_Name    es
+      Index               debtwizard-logs
+      Suppress_Type_Name  On
+helm install fluent-bit \
+  eks/aws-for-fluent-bit \
+  -n logging \
+  -f values.yaml
+
