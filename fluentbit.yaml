@@ -49,7 +49,6 @@ spec:
               readOnly: true
             - name: fluent-bit-config
               mountPath: /fluent-bit/etc
-            # ✅ FIX: writable directory for Fluent Bit DB
             - name: fluent-bit-state
               mountPath: /var/fluent-bit/state
           resources:
@@ -74,7 +73,6 @@ spec:
         - name: fluent-bit-config
           configMap:
             name: fluent-bit-config
-        # ✅ FIX: writable volume for SQLite DB
         - name: fluent-bit-state
           emptyDir: {}
 ---
@@ -99,11 +97,21 @@ data:
     @INCLUDE filter-kubernetes.conf
     @INCLUDE output-opensearch.conf
 
+  # ➕ ADDED (parser only)
+  parsers.conf: |
+    [PARSER]
+        Name          spring_json
+        Format        json
+        Time_Key      @timestamp
+        Time_Format   %Y-%m-%dT%H:%M:%S.%LZ
+        Time_Keep     On
+
   input-app-logs.conf: |
     [INPUT]
         Name              tail
         Path              /mnt/node-logs/*/*.log
         Tag               applogs.*
+        Parser            spring_json     # ➕ ADDED
         DB                /var/fluent-bit/state/applogs.db
         Mem_Buf_Limit     50MB
         Skip_Long_Lines   On
